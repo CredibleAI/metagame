@@ -1,0 +1,9 @@
+This directory bundles a trimmed copy of the upstream ConceptAttention
+package by Helbling et al. (ICML 2025) — only the modules imported by our
+`main.py` / `generate.py`.
+
+Upstream source: https://github.com/helblazer811/ConceptAttention (MIT).
+
+The nested `flux/` subpackage is the FLUX.1 reference implementation by
+Black Forest Labs, used unmodified — its license is preserved at
+`flux/LICENSE` (Apache 2.0).

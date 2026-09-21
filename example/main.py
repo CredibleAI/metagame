@@ -277,19 +277,19 @@ def _eval_masked(model, ids, coalitions, players, baseline_id=UNK_ID):
 
 
 def _sv_from_cache(cache, players, n_out):
-    Np = len(players)
+    n_players = len(players)
     sv = np.zeros(n_out)
     for i in players:
         for s in cache:
             if i in s:
                 continue
-            w = math.factorial(len(s)) * math.factorial(Np - len(s) - 1) / math.factorial(Np)
+            w = math.factorial(len(s)) * math.factorial(n_players - len(s) - 1) / math.factorial(n_players)
             sv[i] += w * (cache[tuple(sorted(s + (i,)))] - cache[s])
     return sv
 
 
 def _sv_sii_from_cache(cache, players, n_out):
-    Np = len(players)
+    n_players = len(players)
     sv = _sv_from_cache(cache, players, n_out)
     sii = np.zeros((n_out, n_out))
     for i, j in itertools.combinations(players, 2):
@@ -297,7 +297,7 @@ def _sv_sii_from_cache(cache, players, n_out):
         for s in cache:
             if i in s or j in s:
                 continue
-            w = math.factorial(len(s)) * math.factorial(Np - len(s) - 2) / math.factorial(Np - 1)
+            w = math.factorial(len(s)) * math.factorial(n_players - len(s) - 2) / math.factorial(n_players - 1)
             total += w * (
                 cache[tuple(sorted(s + (i, j)))] - cache[tuple(sorted(s + (i,)))]
                 - cache[tuple(sorted(s + (j,)))] + cache[s]
@@ -316,19 +316,21 @@ def _baseline_ids(ids, baseline_id=UNK_ID):
 def shapley(model, ids, baseline_id=UNK_ID):
     L = len(ids)
     players = EXPLAIN_POSITIONS
-    coals = powerset(players)
-    ys = _eval_masked(model, ids, coals, players, baseline_id)
-    cache = {s: float(ys[i]) for i, s in enumerate(coals)}
+    coalitions = powerset(players)
+    values = _eval_masked(model, ids, coalitions, players, baseline_id)
+    cache = {s: float(values[i]) for i, s in enumerate(coalitions)}
     sv, _ = _sv_sii_from_cache(cache, players, L)
     return sv, cache
 
 
-def attnlrp(model, ids, baseline_id=UNK_ID):
+def attnlrp(model, ids):
+    """Combined token and positional embedding relevance."""
     device = next(model.parameters()).device
     ids_t = torch.tensor([list(ids)], dtype=torch.long, device=device)
     embeds = model.token_embed(ids_t).detach().requires_grad_(True)
     model(embeds=embeds, lrp_mode=True)[0].backward()
-    out = (embeds * embeds.grad).sum(-1).detach().cpu().numpy()[0]
+    pos_embeds = model.pos_embed(torch.arange(ids_t.shape[1], device=device))
+    out = ((embeds + pos_embeds) * embeds.grad).sum(-1).detach().cpu().numpy()[0]
     out[list(CONSTANT_POSITIONS)] = 0.0
     return out
 
@@ -381,24 +383,59 @@ def integrated_hessians(model, ids, baseline_id=UNK_ID, steps=12):
 
 def shapley_taylor(cache, players, n_out):
     """Shapley-Taylor Interaction Index at order 2 (Sundararajan et al. 2020)."""
-    Np = len(players)
+    n_players = len(players)
     out = np.zeros((n_out, n_out))
     v_empty = cache[tuple()]
     for i in players:
         out[i, i] = cache[(i,)] - v_empty
-    if Np >= 2:
-        scale = 2.0 / Np
+    if n_players >= 2:
+        scale = 2.0 / n_players
         for i, j in itertools.combinations(players, 2):
             total = 0.0
             for s in cache:
                 if i in s or j in s:
                     continue
-                w = math.factorial(len(s)) * math.factorial(Np - len(s) - 1) / math.factorial(Np - 1)
+                w = math.factorial(len(s)) * math.factorial(n_players - len(s) - 1) / math.factorial(n_players - 1)
                 total += w * (
                     cache[tuple(sorted(s + (i, j)))] - cache[tuple(sorted(s + (i,)))]
                     - cache[tuple(sorted(s + (j,)))] + cache[s]
                 )
             out[i, j] = out[j, i] = scale * total
+    return out
+
+
+def asiv(cache, players, n_out):
+    """Asymmetric Shapley interaction value (Lu et al. 2023, Eq. 10).
+    Directed, pairwise-only: out[i, j] = φ_{j→i}, the influence of j on the
+    marginal contribution of i; the diagonal is undefined (left at 0)."""
+    n_players = len(players)
+    out = np.zeros((n_out, n_out))
+    for i in players:
+        for j in players:
+            if j == i:
+                continue
+            total = 0.0
+            for s in cache:
+                if i in s or j not in s:
+                    continue
+                w = math.factorial(len(s)) * math.factorial(n_players - len(s) - 1) / math.factorial(n_players)
+                s_no_j = tuple(t for t in s if t != j)
+                total += w * (
+                    cache[tuple(sorted(s + (i,)))] - cache[s]
+                    - cache[tuple(sorted(s_no_j + (i,)))] + cache[s_no_j]
+                )
+            out[i, j] = total
+    return out
+
+
+def bivariate_shapley(cache, players, n_out):
+    """Bivariate Shapley (Masoomi et al. 2022): out[i, j] = SV_j(u_i), the
+    allocation to source j in the game gated on target i, u_i(S) = v(S)·1[i∈S]
+    (uncentered). The diagonal out[i, i] = SV_i(u_i) is well-defined."""
+    out = np.zeros((n_out, n_out))
+    for i in players:
+        gated = {s: (v if i in s else 0.0) for s, v in cache.items()}
+        out[i, :] = _sv_from_cache(gated, players, n_out)
     return out
 
 
@@ -419,7 +456,7 @@ def _inner_ig(model, mids, t, baseline_id):
 
 
 def _inner_lrp(model, mids, t, baseline_id):
-    return attnlrp(model, mids, baseline_id=baseline_id)[t]
+    return attnlrp(model, mids)[t]
 
 
 _INNER_FN = {"sv": _inner_sv, "ig": _inner_ig, "lrp": _inner_lrp}
@@ -442,6 +479,19 @@ def metagame(model, ids, target_pos, variant, baseline_id=UNK_ID):
     sv = _sv_from_cache(cache, players, L)
     sv[target_pos] = cache[()]  # Janizek et al., Def. 2
     return sv
+
+
+def serial_shapley(model, ids, target_pos, baseline_id=UNK_ID):
+    """Apply Shapley to the target's Shapley value, allowing all players to vary (Lundstrom & Razaviyayn 2023)."""
+    players = EXPLAIN_POSITIONS
+    cache = {}
+    for s in powerset(players):
+        masked = np.asarray(ids, dtype=np.int64).copy()
+        absent = [p for p in players if p not in s]
+        if absent:
+            masked[absent] = baseline_id
+        cache[s] = float(_inner_sv(model, masked, target_pos, baseline_id))
+    return _sv_from_cache(cache, players, len(ids))
 
 
 # =============================================================================
@@ -563,79 +613,96 @@ def _cells_asym_full(tokens, mat):
     return out
 
 
+def _cells_sym_pairs(tokens, mat):
+    """Two width-1 undirected cells per pair (mirrors the IH split layout),
+    set-based comma labels, no singleton/diagonal cells."""
+    out = []
+    for k, (i, j) in enumerate(PAIRS):
+        out.append((3 + 2 * k, f"{tokens[i]} , {tokens[j]}", float(mat[i, j]), 1))
+        out.append((4 + 2 * k, f"{tokens[j]} , {tokens[i]}", float(mat[j, i]), 1))
+    return out
+
+
 # =============================================================================
 # Pipeline
 # =============================================================================
 
 def compute_attributions(model, ids, ig_steps=32, ih_steps=12):
+    n_tokens = len(ids)
     sv, cache = shapley(model, ids)
-    f_full = cache[tuple(EXPLAIN_POSITIONS)]
-    f_base = cache[tuple()]
-    stii = shapley_taylor(cache, EXPLAIN_POSITIONS, len(ids))
-    lrp = attnlrp(model, ids)
-    # attnlrp just ran a forward; _last_attn matches a plain forward (div_grad
-    # is forward-identity).
-    attn_w = model._last_attn[0].mean(0).cpu().numpy()
-    ig = integrated_gradients(model, ids, steps=ig_steps)
-    ih = integrated_hessians(model, ids, steps=ih_steps)
-    L = len(ids)
-    meta = {}
-    for variant in META_VARIANTS:
-        M = np.zeros((L, L))
-        for i in EXPLAIN_POSITIONS:
-            M[i] = metagame(model, ids, target_pos=i, variant=variant)
-        meta[variant] = M
-    return {
+    results = {
         "tokens": decode(ids),
-        "sv": sv, "stii": stii,
-        "attnlrp": lrp, "attention": attn_w,
-        "ig": ig, "ih": ih,
-        "metagame": meta,
-        "f_full": f_full, "f_base": f_base,
+        "sv": sv,
+        "stii": shapley_taylor(cache, EXPLAIN_POSITIONS, n_tokens),
+        "asiv": asiv(cache, EXPLAIN_POSITIONS, n_tokens),
+        "bivsv": bivariate_shapley(cache, EXPLAIN_POSITIONS, n_tokens),
+        "attnlrp": attnlrp(model, ids),
+        # Reuse attention weights from the AttnLRP forward pass.
+        "attention": model._last_attn[0].mean(0).cpu().numpy(),
+        "ig": integrated_gradients(model, ids, steps=ig_steps),
+        "ih": integrated_hessians(model, ids, steps=ih_steps),
+        "metagame": {},
+        "f_full": cache[tuple(EXPLAIN_POSITIONS)],
+        "f_base": cache[()],
     }
 
+    for variant in META_VARIANTS:
+        interactions = np.zeros((n_tokens, n_tokens))
+        for target in EXPLAIN_POSITIONS:
+            interactions[target] = metagame(model, ids, target_pos=target, variant=variant)
+        results["metagame"][variant] = interactions
 
-def explain(model, ids, plot_dir, tag, label="", ig_steps=32, ih_steps=12):
-    disp = decode(ids, pretty=True)
+    serial_values = np.zeros((n_tokens, n_tokens))
+    for target in EXPLAIN_POSITIONS:
+        serial_values[target] = serial_shapley(model, ids, target_pos=target)
+    results["serial_sv"] = serial_values
+    return results
+
+
+def explain(model, ids, plot_dir, tag, color_limits, label="", ig_steps=32, ih_steps=12):
+    tokens = decode(ids, pretty=True)
     print(f"\n--- {tag}: {label} ---", flush=True)
-    ep = list(EXPLAIN_POSITIONS)
-    disp_ep = [disp[p] for p in ep]
-    crop_v = lambda v: np.asarray(v)[ep]
-    crop_m = lambda m: np.asarray(m)[np.ix_(ep, ep)]
-    r = compute_attributions(model, ids, ig_steps=ig_steps, ih_steps=ih_steps)
-    sv, stii = r["sv"], r["stii"]
-    lrp, attn_w = r["attnlrp"], r["attention"]
-    ig, ih = r["ig"], r["ih"]
-    meta = r["metagame"]
-    f_full = r["f_full"]
+    positions = list(EXPLAIN_POSITIONS)
+    labels = [tokens[p] for p in positions]
+    crop_vector = lambda v: np.asarray(v)[positions]
+    crop_matrix = lambda m: np.asarray(m)[np.ix_(positions, positions)]
+    results = compute_attributions(model, ids, ig_steps=ig_steps, ih_steps=ih_steps)
 
     # Group keys: rows sharing a non-None group share a diverging color scale.
-    G_SHAP, G_IH, G_MIG, G_MLRP = "shap", "ih", "mig", "mlrp"
-    ATTN_NORM = mcolors.Normalize(vmin=0.0, vmax=1.0)
-    ATTN_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    shapley_group, ih_group, meta_ig_group, meta_lrp_group = "shap", "ih", "mig", "mlrp"
+    attention_norm = mcolors.Normalize(vmin=0.0, vmax=1.0)
+    attention_cmap = mcolors.LinearSegmentedColormap.from_list(
         "gray_lb", ["#ececec", "#000000"])
-    R = {
-        "attn":     ("Attention",                  _cells_asym_full(disp_ep, crop_m(attn_w)),         None, ATTN_NORM, ATTN_CMAP),
-        "sv":       ("Shapley values",             _cells_diag(disp_ep, crop_v(sv)),                  G_SHAP),
-        "ig":       ("Integrated gradients",       _cells_diag(disp_ep, crop_v(ig)),                  G_MIG),
-        "lrp":      (r"AttnLRP ($\approx$input$\times$gradient)", _cells_diag(disp_ep, crop_v(lrp)), G_MLRP),
-        "stii":     ("Shapley interactions",       _cells_sym_full(disp_ep, crop_m(stii)),            G_SHAP),
-        "ih":       ("Integrated Hessians",        _cells_sym_full_split(disp_ep, crop_m(ih)),        G_IH),
-        "meta_sv":  (r"$\bf{Meta{-}}$Shapley values",         _cells_asym_full(disp_ep, crop_m(meta["meta_sv"])),  G_SHAP),
-        "meta_ig":  (r"$\bf{Meta{-}}$Integrated gradients",   _cells_asym_full(disp_ep, crop_m(meta["meta_ig"])),  G_MIG),
-        "meta_lrp": (r"$\bf{Meta{-}}$AttnLRP",                _cells_asym_full(disp_ep, crop_m(meta["meta_lrp"])), G_MLRP),
+    method_rows = {
+        "attention":     ("Attention",                  _cells_asym_full(labels, crop_matrix(results["attention"])),         None, attention_norm, attention_cmap),
+        "sv":       ("Shapley values",             _cells_diag(labels, crop_vector(results["sv"])),                  shapley_group),
+        "ig":       ("Integrated gradients",       _cells_diag(labels, crop_vector(results["ig"])),                  meta_ig_group),
+        "attnlrp":      (r"AttnLRP ($\approx$input$\times$gradient)", _cells_diag(labels, crop_vector(results["attnlrp"])), meta_lrp_group),
+        "stii":     ("Shapley interactions",       _cells_sym_full(labels, crop_matrix(results["stii"])),            shapley_group),
+        "ih":       ("Integrated Hessians",        _cells_sym_full_split(labels, crop_matrix(results["ih"])),        ih_group),
+        "meta_sv":  (r"$\bf{Meta{-}}$Shapley values",         _cells_asym_full(labels, crop_matrix(results["metagame"]["meta_sv"])),  shapley_group),
+        "meta_ig":  (r"$\bf{Meta{-}}$Integrated gradients",   _cells_asym_full(labels, crop_matrix(results["metagame"]["meta_ig"])),  meta_ig_group),
+        "meta_lrp": (r"$\bf{Meta{-}}$AttnLRP",                _cells_asym_full(labels, crop_matrix(results["metagame"]["meta_lrp"])), meta_lrp_group),
+        "serial_sv":  ("Serial Shapley values",
+                       _cells_diag(labels, crop_matrix(results["serial_sv"]))
+                       + _cells_sym_pairs(labels, crop_matrix(results["serial_sv"])), shapley_group),
+        "asiv":       ("Asymmetric Shapley Inter.", _cells_sym_pairs(labels, crop_matrix(results["asiv"])),            shapley_group),
+        "bivsv":      ("Bivariate Shapley values",  _cells_asym_full(labels, crop_matrix(results["bivsv"])),             shapley_group),
     }
     input_str = (label.split("=")[0].strip() + " =") if "=" in (label or "") else (label or tag)
     # Wrap a negative `b` operand so "a op -b =" renders as "a op (-b) =".
     input_str = re.sub(r'([+\-])\s+(-\d+)(\s*=)', r'\1 (\2)\3', input_str)
 
-    order = ["attn",
-             "sv", "meta_sv", "stii",
+    order = ["attention",
+             "sv", "meta_sv", "serial_sv", "bivsv", "asiv", "stii",
              "ig", "meta_ig", "ih",
-             "lrp", "meta_lrp"]
-    plot_combined([R[k] for k in order], title=(input_str, f_full),
+             "attnlrp", "meta_lrp"]
+    vmin, vmax = color_limits
+    attribution_norm = mcolors.TwoSlopeNorm(vmin=vmin, vcenter=0, vmax=vmax)
+    rows = [method_rows[k] if k == "attention" else (*method_rows[k][:3], attribution_norm) for k in order]
+    plot_combined(rows, title=(input_str, results["f_full"]),
                   path=f"{plot_dir}/{tag}.pdf")
-    return r
+    return results
 
 
 # =============================================================================
@@ -643,11 +710,12 @@ def explain(model, ids, plot_dir, tag, label="", ig_steps=32, ih_steps=12):
 # =============================================================================
 
 EXAMPLES = [
-    ("3_m5_m",   3, -5, MINUS, "3 - -5 = 8"),
-    ("7_m5_m",   7, -5, MINUS, "7 - -5 = 12"),
-    ("4_m4_p",   4, -4, PLUS,  "4 + -4 = 0"),
-    ("m6_8_p",  -6,  8, PLUS,  "-6 +  8 =  2"),
+    ("3_m5_m",   3, -5, MINUS, "3 - -5 = 8",   (-4, 5)),
+    ("7_m5_m",   7, -5, MINUS, "7 - -5 = 12",  (-6, 9)),
+    ("4_m4_p",   4, -4, PLUS,  "4 + -4 = 0",   (-4, 5)),
+    ("m6_8_p",  -6,  8, PLUS,  "-6 +  8 =  2", (-6, 6)),
 ]
+
 
 
 def main():
@@ -694,6 +762,12 @@ def main():
     if os.path.exists(ckpt_path):
         print(f"loading checkpoint from {ckpt_path} (delete it to retrain)", flush=True)
         ckpt = torch.load(ckpt_path, map_location=device)
+        if ckpt["activation"] != args.activation:
+            raise ValueError(
+                f"Checkpoint activation {ckpt['activation']!r} does not match "
+                f"--activation {args.activation!r}. Use the matching activation "
+                "or a different --output-dir."
+            )
         model.load_state_dict(ckpt["state_dict"])
     else:
         print("training...", flush=True)
@@ -720,13 +794,13 @@ def main():
         return
 
     results = {}
-    for tag, a, b, op, label in EXAMPLES:
+    for tag, a, b, op, label, color_limits in EXAMPLES:
         ids = np.asarray(tokenize(a, b, op), dtype=np.int64)
-        results[tag] = explain(model, ids, run_dir, tag, label=label,
+        results[tag] = explain(model, ids, run_dir, tag, color_limits, label=label,
                                ig_steps=args.ig_steps, ih_steps=args.ih_steps)
 
     flat = {}
-    scalar_keys = ("sv", "stii", "attnlrp", "attention", "ig", "ih")
+    scalar_keys = ("sv", "stii", "asiv", "bivsv", "attnlrp", "attention", "ig", "ih", "serial_sv")
     for tag, r in results.items():
         for k in scalar_keys:
             flat[f"{tag}__{k}"] = np.asarray(r[k], dtype=np.float32)

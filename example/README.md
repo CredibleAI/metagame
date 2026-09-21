@@ -2,14 +2,14 @@
 
 A 760-parameter single-block transformer trained on `a + b` and `a − b`
 (with `a, b ∈ {−9, …, 9}`). After training, the script renders the four
-attribution panels shown in paper Figures 1 & 5 (`3_m5_m`) and App. Figure 6
+attribution panels from paper Figures 1 & 5 (`3_m5_m`) and App. Figure 6
 (`7_m5_m`, `4_m4_p`, `m6_8_p`).
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `main.py` | End-to-end script: dataset → model → train (or load `results/model.pt`) → 9-row attribution panel per example. Self-contained — no internal imports. |
+| `main.py` | End-to-end script: dataset → model → train (or load `results/model.pt`) → attribution plot per example. |
 | `env.yml` | Conda env spec (`metagame`). |
 
 ## Quick start
@@ -27,13 +27,16 @@ conda run -n metagame python main.py --output-dir results
 - `--output-dir` (default `./results`)
 - `--train-only` — skip the interpretation, run training only
 
-## Algorithms shown (9 rows per panel)
+## Algorithms shown
 
 | Row | Source |
 |---|---|
 | Attention | `model._last_attn`, mean over heads |
 | Shapley values | `shapley()` — exact via 2^3 powerset |
 | Meta-Shapley values | `metagame(variant="meta_sv")` |
+| Serial Shapley values | `serial_shapley()` |
+| Bivariate Shapley values | `bivariate_shapley()` |
+| Asymmetric Shapley Inter. | `asiv()` |
 | Shapley interactions | `shapley_taylor()` (STII, k=2) |
 | Integrated gradients | `integrated_gradients(steps=32)` |
 | Meta-Integrated gradients | `metagame(variant="meta_ig")` |
@@ -46,7 +49,7 @@ conda run -n metagame python main.py --output-dir results
 ```
 results/
 ├── model.pt          # trained model checkpoint
-├── results.npz       # attributions for the 4 examples (sv/stii/ih/ig/attnlrp/attention + meta_*)
+├── results.npz       # attributions for the 4 examples
 ├── run.log           # script stdout from the most recent run
 ├── 3_m5_m.pdf        # paper Figures 1 & 5
 ├── 7_m5_m.pdf        # paper Figure 6, top

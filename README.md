@@ -1,8 +1,16 @@
-# metagame
+<div align="center">
+  
+# Metagame [NeurIPS 2026] 
 
-This repository contains the raw supplementary code and metadata for the preprint:
+[![arXiv](http://img.shields.io/badge/Paper-arxiv.2605.06295-FF6B6B.svg)](https://arxiv.org/abs/2605.06295)
+[![Conference](http://img.shields.io/badge/NeurIPS-2026-FFD93D.svg)](https://neurips.cc/Conferences/2026)
+</div>
 
-> Hubert Baniecki, Przemyslaw Biecek, Fabian Fumagalli. **Attributions All the Way Down? The Metagame of Interpretability** https://arxiv.org/abs/2605.06295
+This repository is a code supplement to the following [paper](https://arxiv.org/abs/2605.06295):
+
+> Hubert Baniecki, Przemyslaw Biecek, Fabian Fumagalli. **The Metagame of Interpretability and Meta-Attributions**. *NeurIPS 2026*
+
+**TL;DR:** We introduce meta-attributions, which decompose any feature attribution into directional interactions via Shapley values, and we apply them to interpret language and multimodal transformers.
 
 ![](assets/figure1.png)
 

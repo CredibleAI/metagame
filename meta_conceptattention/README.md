@@ -1,4 +1,4 @@
-# `meta_conceptattention/` — Table 3 + Figures 4, 13
+# `meta_conceptattention/` — Table 3 + Figures 5, 13
 
 ConceptAttention vs. Meta-ConceptAttention on FLUX.1 [schnell] across Pascal
 VOC, MS COCO, and ImageNet-Segmentation.
@@ -27,7 +27,7 @@ tracks. No GPU, no dataset, no model download. Substitute `pascalvoc_n20` or
 | File | Purpose |
 |---|---|
 | `main.py` | Evaluation pipeline: MS COCO / Pascal VOC / ImageNet-Seg sweep over CA + Meta-CA, sharded inference + `--aggregate` step that writes `results/<variant>/metrics.json`. |
-| `generate.py` | Figure 4 qualitative example: FLUX.1 [schnell] on `"a photo of a vintage bike on a city street"`, rendering the 5-row grid (input + CA at 2/3/N concept coalitions + Meta-CA Shapley) and the K×N directional Meta-Shapley figure. Outputs to `results/bike/`. |
+| `generate.py` | Figure 5 qualitative example: FLUX.1 [schnell] on `"a photo of a vintage bike on a city street"`, rendering the 5-row grid (input + CA at 2/3/N concept coalitions + Meta-CA Shapley) and the K×N directional Meta-Shapley figure. Outputs to `results/bike/`. |
 | `run_main.sh` / `run_generate.sh` | Slurm wrappers. |
 | `concept_attention/` | Bundled trimmed upstream package — only the parts imported by `main.py` / `generate.py`. Picked up automatically as a sibling Python package when running scripts from this directory; no `pip install` needed. |
 | `env.yml` | Conda env spec (`metaconceptattention`). |
@@ -36,7 +36,7 @@ tracks. No GPU, no dataset, no model download. Substitute `pascalvoc_n20` or
 
 ```
 results/
-├── bike/                              # Figure 4 (the paper's qualitative example)
+├── bike/                              # Figure 5 (the paper's qualitative example)
 │   ├── input.png                      # FLUX.1-generated image
 │   ├── grid.{pdf,png}                 # CA at 2/3/N + Meta-CA Shapley
 │   └── directional.{pdf,png}          # K×N directional Meta-Shapley φ_(j→i)
@@ -62,7 +62,7 @@ for ImageNet-Seg, whose binary masks make it equivalent to the single track).
 |---|---|
 | **Table 3** (Acc/mIoU/mAP) | `python -c "import json; print(json.load(open('results/<dataset>_n20/metrics.json'))['paper_tracks'])"` for `<dataset>` ∈ `{mscoco, pascalvoc, imagenetseg}`. |
 | **Fig 13** (player-set + ablation curves) | All 44 `results/<variant>/metrics.json` files; the figure plots the four `paper_tracks.<method>.<track>.{mAcc,mIoU,mAP}` values across the player-set grid for each ablation style. |
-| **Fig 4** (bike qualitative panels) | `python generate.py` → `results/bike/{input,grid,directional}.{png,pdf}`. Requires GPU + the FLUX.1 [schnell] model (~5 min loading + a few minutes per coalition pass). |
+| **Fig 5** (bike qualitative panels) | `python generate.py` → `results/bike/{input,grid,directional}.{png,pdf}`. Requires GPU + the FLUX.1 [schnell] model (~5 min loading + a few minutes per coalition pass). |
 | **Full sweep** (regenerates the metrics) | `sbatch run_main.sh` per `(DATASET, ablation env vars)` combination — see `run_main.sh` header for the 44-cell grid. Each cell aggregates ~hours on a single H100. |
 
 ## `main.py` flags (paper App. Fig 13)

@@ -1,6 +1,6 @@
-# `meta_gradeclip/` — Tables 2 & 4 + Figures 2, 7, 8, 9
+# `meta_gradeclip/` — Tables 2 & 4 + Figures 2, 4, 8, 9
 
-Pointing-game evaluation across CLIP, SigLIP-2, MetaCLIP-2; plus the App. C.3
+Pointing-game evaluation across CLIP, SigLIP-2, MetaCLIP-2; plus the App. C.2
 adaptations of generic Attention / MaskCLIP / Grad-ECLIP to SigLIP-2.
 
 ## Quick start: reproduce Tables 2 & 4 from the cached CSV
@@ -22,10 +22,10 @@ no dataset, no model download.
 | `pointing_game_fixlip.py` | FIxLIP Shapley-interaction baseline for one (model, scene). Invoked per slurm task by `run_pointing_game_fixlip.sh`. |
 | `run_pointing_game_fixlip.py` | Submits the FIxLIP sweep over the 10 paper games × 4 model patch sizes via `sbatch run_pointing_game_fixlip.sh`. |
 | `run_pointing_game_fixlip.sh` | Slurm wrapper. |
-| `example.py` | Qualitative figures: pointing-game Fig 7 panels (cached JSONs) plus Figs 2, 8, 9 (`dog_and_hydrant_{1,2,3}`, `dog_hot_dog`) rendered from scratch via `MetagameTokens`. |
+| `example.py` | Qualitative figures: pointing-game Fig 4 panels (cached JSONs) plus Figs 2, 8, 9 (`dog_and_hydrant_{1,2,3}`, `dog_hot_dog`) rendered from scratch via `MetagameTokens`. |
 | `metagame.py` | `Metagame`, `MetagameTokens`, and the shared `explain_image` helper, imported by both `pointing_game.py` and `example.py`. |
 | `data.py` | Builds the pointing-game dataset from ImageNet-1k validation: per-class image dumps and 4-class 2×2 composites. Set `IMAGENET_PATH` env var to point at a local arrow dump, or leave unset to pull from HuggingFace. |
-| `gradeclip.py`, `gradesiglip.py` | Per-method explanation kernels for CLIP/SigLIP families (App. C.3). |
+| `gradeclip.py`, `gradesiglip.py` | Per-method explanation kernels for CLIP/SigLIP families (App. C.2). |
 | `fixlip/` | Helpers package: `utils`, `plot`, `sampler`, `game_huggingface`, `fixlip` (the FIxLIP class). |
 | `env.yml` | Conda env spec (`metagradeclip`). |
 
@@ -42,7 +42,7 @@ results/
 ├── dog_and_hydrant_2/                 # Fig 8a (green-hydrant variant)
 ├── dog_and_hydrant_3/                 # Fig 8b (yorkshire / red-hydrant)
 ├── dog_hot_dog/                       # Fig 9 (synergy + antisynergy)
-└── pointing_game/                     # Fig 7 panels: <game>_7.pdf
+└── pointing_game/                     # Fig 4 panels: <game>_7.pdf
 ```
 
 The `images/` directory holds the 5 input photos referenced by the
@@ -54,7 +54,7 @@ qualitative scripts (`dog_and_hydrant_{1,2,3}`, `dog_hot_dog`,
 | Artifact | Command / Path |
 |---|---|
 | **Tables 2 & 4** | `python pointing_game.py --table-only` |
-| **Fig 7 + Figs 2, 8, 9** (qualitative panels) | `python example.py` — Part 1 renders Fig 7 from cached pointing-game JSONs into `results/pointing_game/`; Part 2 loads MetaCLIP-2 huge and produces Figs 2 / 8 / 9 in `results/<example>/`. GPU required for Part 2. |
+| **Fig 4 + Figs 2, 8, 9** (qualitative panels) | `python example.py` — Part 1 renders Fig 4 from cached pointing-game JSONs into `results/pointing_game/`; Part 2 loads MetaCLIP-2 huge and produces Figs 2 / 8 / 9 in `results/<example>/`. GPU required for Part 2. |
 | **Full sweep** (regenerates the CSV) | `python pointing_game.py` end-to-end + `python run_pointing_game_fixlip.py` for the FIxLIP baseline. Needs the dataset built by `python data.py` first, plus access to GPUs (~hours per model × method). |
 
 ## Environment variables

@@ -1,8 +1,8 @@
-# `example/` — Figure 1 + App. Figures 5, 6
+# `example/` — Figure 1 + App. Figures 6, 7
 
 A 760-parameter single-block transformer trained on `a + b` and `a − b`
 (with `a, b ∈ {−9, …, 9}`). After training, the script renders the four
-attribution panels from paper Figures 1 & 5 (`3_m5_m`) and App. Figure 6
+attribution panels from paper Figures 1 & 6 (`3_m5_m`) and App. Figure 7
 (`7_m5_m`, `4_m4_p`, `m6_8_p`).
 
 ## Files
@@ -51,8 +51,8 @@ results/
 ├── model.pt          # trained model checkpoint
 ├── results.npz       # attributions for the 4 examples
 ├── run.log           # script stdout from the most recent run
-├── 3_m5_m.pdf        # paper Figures 1 & 5
-├── 7_m5_m.pdf        # paper Figure 6, top
-├── 4_m4_p.pdf        # paper Figure 6, middle
-└── m6_8_p.pdf        # paper Figure 6, bottom
+├── 3_m5_m.pdf        # paper Figures 1 & 6
+├── 7_m5_m.pdf        # paper Figure 7, top
+├── 4_m4_p.pdf        # paper Figure 7, middle
+└── m6_8_p.pdf        # paper Figure 7, bottom
 ```
